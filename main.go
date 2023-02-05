@@ -24,7 +24,6 @@ const (
 	maxMessageSize = 512
 )
 
-var addr = flag.String("addr", os.Getenv("PORT"), "http service address")
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -60,7 +59,7 @@ func main() {
 		}
 
 	})
-	err = http.ListenAndServe(*addr, nil)
+	err = http.ListenAndServe(os.Getenv("PORT"), nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
