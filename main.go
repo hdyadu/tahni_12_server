@@ -59,7 +59,7 @@ func main() {
 		}
 
 	})
-	err = http.ListenAndServe(os.Getenv("PORT"), nil)
+	err = http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
