@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	firebase "firebase.google.com/go/v4"
 	"github.com/gorilla/websocket"
 )
 
@@ -20,7 +24,7 @@ const (
 	maxMessageSize = 512
 )
 
-var addr = flag.String("addr", ":8080", "http service address")
+var addr = flag.String("addr", os.Getenv("PORT"), "http service address")
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -29,12 +33,34 @@ var upgrader = websocket.Upgrader{
 func main() {
 	flag.Parse()
 	hub := newHub()
+	app, err := firebase.NewApp(context.Background(), nil)
+	if err != nil {
+		log.Fatalf("error initializing app: %v\n", err)
+	}
+
+	if err != nil {
+		log.Fatalf("error initializing app: %v\n", err)
+	}
+
 	go hub.run()
 	// http.HandleFunc("/", serveHome)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, w, r)
+		idToken := r.Header.Get("Bearer")
+		client, err := app.Auth(context.Background())
+		if err != nil {
+			log.Fatalf("error getting Auth client: %v\n", err)
+		}
+
+		token, err := client.VerifyIDToken(context.Background(), idToken)
+		if err != nil {
+			log.Fatalf("error verifying ID token: %v\n", err)
+		} else {
+			fmt.Println(token.UID + "joined a game")
+			serveWs(hub, w, r)
+		}
+
 	})
-	err := http.ListenAndServe(*addr, nil)
+	err = http.ListenAndServe(*addr, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
