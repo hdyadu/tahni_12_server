@@ -43,21 +43,22 @@ func main() {
 
 	go hub.run()
 	// http.HandleFunc("/", serveHome)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/joingame", func(w http.ResponseWriter, r *http.Request) {
 		idToken := r.Header.Get("Bearer")
-		client, err := app.Auth(context.Background())
-		if err != nil {
-			log.Fatalf("error getting Auth client: %v\n", err)
-		}
+		if idToken != "" {
+			client, err := app.Auth(context.Background())
+			if err != nil {
+				log.Fatalf("error getting Auth client: %v\n", err)
+			}
 
-		token, err := client.VerifyIDToken(context.Background(), idToken)
-		if err != nil {
-			log.Fatalf("error verifying ID token: %v\n", err)
-		} else {
-			fmt.Println(token.UID + "joined a game")
-			serveWs(hub, w, r)
+			token, err := client.VerifyIDToken(context.Background(), idToken)
+			if err != nil {
+				log.Fatalf("error verifying ID token: %v\n", err)
+			} else {
+				fmt.Println(token.UID + "joined a game")
+				serveWs(hub, w, r)
+			}
 		}
-
 	})
 	err = http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 	if err != nil {
