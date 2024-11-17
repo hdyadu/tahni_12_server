@@ -95,7 +95,7 @@ func (h *Hub) run() {
 				h.Lock()
 
 				h.waiting = true
-				room := newRoom(h, client)
+				room := newRoom(h)
 				h.waitingRoom = room
 				h.Unlock()
 				client.room = room

@@ -16,7 +16,7 @@ type Room struct {
 	waiting    bool
 }
 
-func newRoom(hub *Hub, client *Client) *Room {
+func newRoom(hub *Hub) *Room {
 	return &Room{
 		hub:        hub,
 		players:    make(map[*Client]bool),
