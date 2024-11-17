@@ -59,6 +59,7 @@ func main() {
 				serveWs(hub, w, r)
 			}
 		}
+		w.WriteHeader(http.StatusNotFound)
 	})
 	err = http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 	if err != nil {
