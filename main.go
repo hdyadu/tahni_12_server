@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,70 +12,57 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-	// Maximum message size allowed from peer.
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 512
 )
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 func main() {
-	flag.Parse()
 	hub := newHub()
 	app, err := firebase.NewApp(context.Background(), nil)
 	if err != nil {
 		log.Fatalf("error initializing app: %v\n", err)
 	}
-
+	client, err := app.Auth(context.Background())
 	if err != nil {
-		log.Fatalf("error initializing app: %v\n", err)
+		log.Fatalf("error getting Auth client: %v\n", err)
 	}
-
 	go hub.run()
-	// http.HandleFunc("/", serveHome)
+
 	http.HandleFunc("/joingame", func(w http.ResponseWriter, r *http.Request) {
 		idToken := r.Header.Get("Bearer")
-		if idToken != "" {
-			client, err := app.Auth(context.Background())
-			if err != nil {
-				log.Fatalf("error getting Auth client: %v\n", err)
-			}
-
-			token, err := client.VerifyIDToken(context.Background(), idToken)
-			if err != nil {
-				log.Fatalf("error verifying ID token: %v\n", err)
-			} else {
-				fmt.Println(token.UID + "joined a game")
-				serveWs(hub, w, r)
-			}
+		if idToken == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
-		w.WriteHeader(http.StatusNotFound)
+		token, err := client.VerifyIDToken(context.Background(), idToken)
+		if err != nil {
+			log.Printf("error verifying ID token: %v\n", err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "error upgrading connection", http.StatusUpgradeRequired)
+			return
+		}
+		log.Printf("User %s joined a game", token.UID)
+		hub.register <- conn
 	})
-	err = http.ListenAndServe(":"+os.Getenv("PORT"), nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
 	}
-}
 
-// serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	hub.register <- client
-
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
-
+	log.Printf("server started on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

@@ -4,136 +4,78 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 type Hub struct {
-	sync.Mutex
-	// In session Rooms.
-	rooms map[*Room]bool
-	// rooms   map[*Room]bool
-	// Register requests from the clients.
-	register chan *Client
-
-	// room waiting for second player
-	waitingRoom *Room
-	// wwaiting bool
-	waiting bool
-	// Delete room when it is empty
+	rooms       map[*Room]bool
+	register    chan *websocket.Conn
+	waitingRoom struct {
+		sync.Mutex
+		room    *Room
+		waiting bool
+	}
 	delete chan *Room
 }
 
 type gameMessage struct {
 	Event string      `json:"event"`
 	Data  interface{} `json:"data"`
-	// data     int    `json:"data"`
-	// moveList []int  `json:"moveList"`
 }
 
 func newHub() *Hub {
 	return &Hub{
-		register: make(chan *Client),
+		register: make(chan *websocket.Conn, 100),
 		rooms:    make(map[*Room]bool),
-		delete:   make(chan *Room),
-		waiting:  false,
+		delete:   make(chan *Room, 20),
 	}
 }
 
 func (h *Hub) run() {
 	for {
 		select {
-
-		case client := <-h.register:
-			// if len(h.rooms) == 0 {
-			// 	h.Lock()
-			// 	defer h.Unlock()
-			// 	room := newRoom(h, client)
-			// 	client.room = room
-			// 	room.players[client] = true
-			// 	go room.run()
-			// 	h.rooms[room] = true
-
-			// 	mgs := &gameMessage{Event: "turn", Data: 1}
-			// 	fmt.Println(mgs)
-			// 	val, err := json.Marshal(mgs)
-			// 	fmt.Println(val)
-			// 	if err != nil {
-			// 		fmt.Print(err.Error())
-			// 	}
-			// 	go client.writePump()
-			// 	go client.readPump()
-			// 	client.send <- val
-			// 	h.waitingRoom = room
-			// 	h.waiting = true
-			// } else {
-
-			if h.waiting {
-				h.Lock()
-
-				h.waiting = false
-				room := h.waitingRoom
-				h.Unlock()
+		case conn := <-h.register:
+			client := &Client{hub: h, conn: conn, send: make(chan []byte, 256)}
+			h.waitingRoom.Lock()
+			if h.waitingRoom.waiting {
+				h.waitingRoom.waiting = false
+				room := h.waitingRoom.room
 				room.players[client] = true
 				client.room = room
-
 				go client.writePump()
 				go client.readPump()
 				i := 1
 				for client := range room.players {
-
-					mgs := &gameMessage{Event: "turn", Data: i}
-					fmt.Println(mgs)
-					val, err := json.Marshal(mgs)
-					fmt.Println(val)
+					msg := &gameMessage{Event: "turn", Data: i}
+					val, err := json.Marshal(msg)
 					if err != nil {
+						// TODO could improve further if a player does not get there turn they could hold the game hostage
 						fmt.Print(err.Error())
+					} else {
+						client.send <- val
 					}
-					client.send <- val
 					i++
 				}
-
 			} else {
-				h.Lock()
-
-				h.waiting = true
+				h.waitingRoom.waiting = true
 				room := newRoom(h)
-				h.waitingRoom = room
-				h.Unlock()
+				h.waitingRoom.room = room
 				client.room = room
 				room.players[client] = true
 				go room.run()
 				h.rooms[room] = true
 				go client.writePump()
 				go client.readPump()
-
 			}
-			// }
+			h.waitingRoom.Unlock()
 		case room := <-h.delete:
-			fmt.Print("hub delete request came")
-			h.Lock()
+			h.waitingRoom.Lock()
 			for p := range room.players {
 				p.conn.Close()
 			}
 			delete(h.rooms, room)
-			if len(h.rooms) == 0 {
-				h.waiting = false
-			}
-			h.Unlock()
-			// case client := <-h.unregister:
-
-			// 	close(client.send)
-
-			// 	// case message := <-h.broadcast:
-			// 	// 	for client := range h.clients {
-			// 	// 		select {
-			// 	// 		case client.send <- message:
-			// 	// 		default:
-			// 	// 			close(client.send)
-			// 	// 			delete(h.clients, client)
-			// 	// 		}
-			// 	// 	}
-			// }
-			fmt.Println("Total rooms ", len(h.rooms))
+			h.waitingRoom.Unlock()
 		}
 	}
-
 }
