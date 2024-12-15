@@ -1,24 +1,22 @@
-FROM golang:alpine AS build
+FROM golang:1.21-bookworm as builder
 
 WORKDIR /app
 
-COPY go.mod ./
-COPY go.sum ./
-
+COPY go.* ./
 RUN go mod download
 
-COPY *.go ./
+COPY . ./
 
-RUN CGO_ENABLED=0 go build -o /tahni-server
+RUN go build -v -o server
 
-FROM gcr.io/distroless/static-debian12
+FROM debian:bookworm-slim
 
 WORKDIR /
 
-COPY --from=build /tahni-server /tahni-server
+RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-EXPOSE 8080
+COPY --from=builder /app/server /app/server
 
-USER nonroot:nonroot
-
-ENTRYPOINT [ "/tahni-server" ]
+CMD [ "/app/server" ]
